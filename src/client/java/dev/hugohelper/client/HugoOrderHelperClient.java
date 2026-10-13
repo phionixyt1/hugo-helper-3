@@ -1,17 +1,17 @@
-package dev.hugohelper;
+package dev.hugohelper.client;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.sounds.SoundEvents;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -40,24 +40,24 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         ScreenEvents.BEFORE_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-            if (screen instanceof HandledScreen<?>) {
+            if (screen instanceof AbstractContainerScreen<?>) {
                 ScreenEvents.afterRender(screen).register(HugoOrderHelperClient::afterRender);
             }
         });
     }
 
-    private static void afterRender(Screen rawScreen, DrawContext drawContext, int mouseX, int mouseY, float tickDelta) {
-        if (!(rawScreen instanceof HandledScreen<?> screen)) return;
+    private static void afterRender(Screen rawScreen, GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
+        if (!(rawScreen instanceof AbstractContainerScreen<?> screen)) return;
 
         String title = normalize(screen.getTitle().getString());
-        ScreenHandler handler = screen.getScreenHandler();
-        List<Slot> slots = handler.slots;
+        AbstractContainerMenu menu = screen.getMenu();
+        List<Slot> slots = menu.slots;
         int playerSlots = Math.min(36, slots.size());
         int containerSlots = Math.max(0, slots.size() - playerSlots);
 
         if (title.equals("orders")) {
             scanOrders(slots, containerSlots);
-            drawPanel(drawContext, List.of(
+            drawPanel(graphics, List.of(
                 "Hugo Helper",
                 ORDERS.size() + " order price" + (ORDERS.size() == 1 ? "" : "s") + " cached"
             ), 0x55FFFF);
@@ -65,23 +65,23 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
         }
 
         if (title.equals("auktionen")) {
-            scanAndRenderAuctions(drawContext, slots, containerSlots);
+            scanAndRenderAuctions(graphics, slots, containerSlots);
             return;
         }
 
         if (title.equals("bestatigen")) {
-            renderPurchaseConfirmation(drawContext, slots, containerSlots);
+            renderPurchaseConfirmation(graphics, slots, containerSlots);
             return;
         }
 
         if (title.equals("order beliefern")) {
-            renderDeliveryConfirmation(drawContext, slots, containerSlots);
+            renderDeliveryConfirmation(graphics, slots, containerSlots);
         }
     }
 
     private static void scanOrders(List<Slot> slots, int containerSlots) {
         for (int i = 0; i < containerSlots; i++) {
-            ItemStack stack = slots.get(i).getStack();
+            ItemStack stack = slots.get(i).getItem();
             if (stack.isEmpty()) continue;
 
             List<String> lines = tooltipLines(stack);
@@ -96,11 +96,11 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
         }
     }
 
-    private static void scanAndRenderAuctions(DrawContext drawContext, List<Slot> slots, int containerSlots) {
+    private static void scanAndRenderAuctions(GuiGraphics graphics, List<Slot> slots, int containerSlots) {
         int matches = 0;
         Profit best = null;
         for (int i = 0; i < containerSlots; i++) {
-            ItemStack stack = slots.get(i).getStack();
+            ItemStack stack = slots.get(i).getItem();
             if (stack.isEmpty()) continue;
 
             Profit profit = calculateAuctionProfit(stack);
@@ -119,23 +119,23 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
                 panel.add("Best: " + best.item + " +$" + INTEGER.format(best.profit));
             }
         }
-        drawPanel(drawContext, panel, ORDERS.isEmpty() ? 0xFFAA00 : 0x55FF55);
+        drawPanel(graphics, panel, ORDERS.isEmpty() ? 0xFFAA00 : 0x55FF55);
 
         if (best != null) {
             String fingerprint = best.item + ":" + best.auctionPrice + ":" + best.quantity;
             if (ALERTED.add(fingerprint)) {
-                MinecraftClient client = MinecraftClient.getInstance();
+                Minecraft client = Minecraft.getInstance();
                 if (client.player != null) {
-                    client.player.playSound(SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.6f);
+                    client.player.playSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 0.8f, 1.6f);
                 }
             }
         }
     }
 
-    private static void renderPurchaseConfirmation(DrawContext drawContext, List<Slot> slots, int containerSlots) {
+    private static void renderPurchaseConfirmation(GuiGraphics graphics, List<Slot> slots, int containerSlots) {
         Profit best = null;
         for (int i = 0; i < containerSlots; i++) {
-            ItemStack stack = slots.get(i).getStack();
+            ItemStack stack = slots.get(i).getItem();
             if (stack.isEmpty()) continue;
             Profit profit = calculateAuctionProfit(stack);
             if (profit != null && (best == null || profit.profit > best.profit)) best = profit;
@@ -143,7 +143,7 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
         if (best == null) return;
 
         int color = best.qualifies() ? 0x55FF55 : 0xFF5555;
-        drawPanel(drawContext, List.of(
+        drawPanel(graphics, List.of(
             best.item + " x" + best.quantity,
             "Order gross: $" + INTEGER.format(best.gross),
             "Auction cost: $" + INTEGER.format(best.auctionPrice),
@@ -152,9 +152,9 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
         ), color);
     }
 
-    private static void renderDeliveryConfirmation(DrawContext drawContext, List<Slot> slots, int containerSlots) {
+    private static void renderDeliveryConfirmation(GuiGraphics graphics, List<Slot> slots, int containerSlots) {
         for (int i = 0; i < containerSlots; i++) {
-            ItemStack stack = slots.get(i).getStack();
+            ItemStack stack = slots.get(i).getItem();
             if (stack.isEmpty()) continue;
             List<String> lines = tooltipLines(stack);
             String receive = findLine(lines, "you receive:");
@@ -165,7 +165,7 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
                 panel.add(quantity == null ? "Delivery" : quantity);
                 if (taxes != null) panel.add(taxes);
                 panel.add(receive);
-                drawPanel(drawContext, panel, 0x55FFFF);
+                drawPanel(graphics, panel, 0x55FFFF);
                 return;
             }
         }
@@ -189,10 +189,10 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
     }
 
     private static List<String> tooltipLines(ItemStack stack) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        List<Text> tooltip = Screen.getTooltipFromItem(client, stack);
+        Minecraft client = Minecraft.getInstance();
+        List<Component> tooltip = Screen.getTooltipFromItem(client, stack);
         List<String> lines = new ArrayList<>(tooltip.size());
-        for (Text line : tooltip) lines.add(Formatting.strip(line.getString()));
+        for (Component line : tooltip) lines.add(ChatFormatting.stripFormatting(line.getString()));
         return lines;
     }
 
@@ -203,7 +203,7 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
                 || lower.contains("paid out") || lower.startsWith("click to deliver")) continue;
             if (!line.isBlank()) return line.trim();
         }
-        return stack.getName().getString();
+        return stack.getHoverName().getString();
     }
 
     private static String auctionItemName(ItemStack stack, List<String> lines) {
@@ -212,7 +212,7 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
             if (lower.startsWith("price:") || lower.startsWith("seller:") || lower.startsWith("expires in:")) continue;
             if (!line.isBlank()) return line.trim();
         }
-        return stack.getName().getString();
+        return stack.getHoverName().getString();
     }
 
     private static Long findMoney(List<String> lines, Pattern pattern) {
@@ -248,24 +248,24 @@ public final class HugoOrderHelperClient implements ClientModInitializer {
     }
 
     private static String normalize(String text) {
-        return Formatting.strip(text).trim().toLowerCase(Locale.ROOT);
+        return ChatFormatting.stripFormatting(text).trim().toLowerCase(Locale.ROOT);
     }
 
     private static String key(String item) {
         return normalize(item).replaceAll("\\s+", " ");
     }
 
-    private static void drawPanel(DrawContext context, List<String> lines, int accent) {
-        MinecraftClient client = MinecraftClient.getInstance();
+    private static void drawPanel(GuiGraphics graphics, List<String> lines, int accent) {
+        Minecraft client = Minecraft.getInstance();
         int width = 0;
-        for (String line : lines) width = Math.max(width, client.textRenderer.getWidth(line));
+        for (String line : lines) width = Math.max(width, client.font.width(line));
         int x = 6;
         int y = 6;
         int height = 6 + lines.size() * 11;
-        context.fill(x - 3, y - 3, x + width + 5, y + height, 0xD0101010);
-        context.fill(x - 3, y - 3, x - 1, y + height, 0xFF000000 | accent);
+        graphics.fill(x - 3, y - 3, x + width + 5, y + height, 0xD0101010);
+        graphics.fill(x - 3, y - 3, x - 1, y + height, 0xFF000000 | accent);
         for (int i = 0; i < lines.size(); i++) {
-            context.drawTextWithShadow(client.textRenderer, lines.get(i), x, y + i * 11, i == 0 ? accent : 0xFFFFFF);
+            graphics.drawString(client.font, lines.get(i), x, y + i * 11, i == 0 ? accent : 0xFFFFFF);
         }
     }
 
