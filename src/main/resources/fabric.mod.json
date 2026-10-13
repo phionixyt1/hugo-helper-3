@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "hugo-order-helper",
+	"version": "${version}",
+	"name": "Hugo Order Helper",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/hugo-order-helper/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"dev.hugohelper.HugoOrderHelper"
+		],
+		"client": [
+			"dev.hugohelper.client.HugoOrderHelperClient"
+		]
+	},
+	"mixins": [
+		"hugo-order-helper.mixins.json",
+		{
+			"config": "hugo-order-helper.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
